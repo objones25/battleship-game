@@ -5,8 +5,11 @@ A real-time multiplayer Battleship game built with React, TypeScript, Node.js, a
 ## Features
 
 - **Real-time multiplayer gameplay** using WebSocket connections
+- **JWT-based authentication** with secure HTTP-only cookies
+- **Persistent game state** - maintains user session across page refreshes
 - **Interactive game board** with ship placement and attack mechanics
 - **Room-based matchmaking** system
+- **Automatic room cleanup** to prevent memory leaks
 - **Responsive design** with Tailwind CSS
 - **Type-safe development** with TypeScript throughout
 - **Comprehensive testing** with Jest
@@ -155,6 +158,31 @@ npm run test:coverage
 cd backend
 npm run test:watch
 ```
+
+## Authentication System
+
+The game uses a robust JWT-based authentication system with the following features:
+
+### Security Features
+
+- **HTTP-only cookies** - JWT tokens stored securely to prevent XSS attacks
+- **Automatic socket reconnection** - Seamless authentication after login/registration
+- **Token validation** - Server-side JWT verification for all protected routes
+- **Session persistence** - User state maintained across page refreshes
+
+### Authentication Flow
+
+1. User registers/logs in via REST API
+2. Server sets HTTP-only cookie with JWT token
+3. Socket connection automatically authenticates using cookie
+4. User can join rooms and play games with verified identity
+
+### Recent Improvements
+
+- **Fixed JWT malformed errors** - Enhanced cookie parsing logic
+- **Improved socket authentication** - Robust token extraction from cookies
+- **Added automatic reconnection** - Socket reconnects after login with auth cookies
+- **Enhanced debugging** - Comprehensive logging for troubleshooting
 
 ## Game Rules
 
