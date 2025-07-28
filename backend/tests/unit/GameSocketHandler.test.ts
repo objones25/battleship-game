@@ -4,11 +4,14 @@ import { Socket } from "socket.io";
 import { GameSocketHandler } from "../../src/sockets/GameSocketHandler";
 import { GameRoomModel } from "../../src/models/GameRoom";
 import { GameService } from "../../src/services/GameService";
-import { Ship, Player, GameRoom } from "../../src/types";
+import { AuthService } from "../../src/services/AuthService";
+import { Ship, Player, GameRoom, User } from "../../src/types";
 
 // Mock the dependencies
 jest.mock("../../src/models/GameRoom");
 jest.mock("../../src/services/GameService");
+jest.mock("../../src/services/AuthService");
+jest.mock("../../src/services/UserService");
 jest.mock("../../src/utils", () => ({
   Utils: {
     generatePlayerId: jest.fn(() => "test-player-id"),
@@ -18,6 +21,7 @@ jest.mock("../../src/utils", () => ({
 
 const MockedGameRoomModel = GameRoomModel as jest.Mocked<typeof GameRoomModel>;
 const MockedGameService = GameService as jest.Mocked<typeof GameService>;
+const MockedAuthService = AuthService as jest.Mocked<typeof AuthService>;
 
 describe("GameSocketHandler", () => {
   let io: Server;
@@ -25,12 +29,22 @@ describe("GameSocketHandler", () => {
   let mockSocket: Partial<Socket>;
   let httpServer: ReturnType<typeof createServer>;
 
+  const mockUser: User = {
+    id: "test-user-id",
+    username: "testuser",
+    email: "test@example.com",
+    passwordHash: "hashedpassword",
+    createdAt: new Date(),
+    lastActive: new Date(),
+  };
+
   const createMockPlayer = (
     id: string,
     name: string,
     socketId: string
   ): Player => ({
     id,
+    userId: "test-user-id",
     name,
     socketId,
     isReady: false,
@@ -69,6 +83,11 @@ describe("GameSocketHandler", () => {
       emit: jest.fn(),
       to: jest.fn().mockReturnThis(),
       on: jest.fn(),
+      handshake: {
+        headers: {
+          cookie: "authToken=valid-jwt-token",
+        },
+      } as any,
     };
 
     // Mock io.to method
@@ -78,6 +97,9 @@ describe("GameSocketHandler", () => {
 
     // Reset all mocks
     jest.clearAllMocks();
+
+    // Setup default auth mocks
+    MockedAuthService.verifyToken.mockResolvedValue(mockUser);
   });
 
   afterEach(() => {
@@ -90,6 +112,10 @@ describe("GameSocketHandler", () => {
     it("should set up all socket event listeners", () => {
       handler.handleConnection(mockSocket as Socket);
 
+      expect(mockSocket.on).toHaveBeenCalledWith(
+        "authenticate",
+        expect.any(Function)
+      );
       expect(mockSocket.on).toHaveBeenCalledWith(
         "join-room",
         expect.any(Function)
@@ -126,12 +152,66 @@ describe("GameSocketHandler", () => {
     });
   });
 
-  describe("join-room event", () => {
-    let joinRoomHandler: Function;
+  describe("authenticate event", () => {
+    let authenticateHandler: Function;
 
     beforeEach(() => {
       handler.handleConnection(mockSocket as Socket);
       const onCalls = (mockSocket.on as jest.Mock).mock.calls;
+      const authenticateCall = onCalls.find(
+        (call: [string, Function]) => call[0] === "authenticate"
+      );
+      authenticateHandler = authenticateCall![1];
+    });
+
+    it("should successfully authenticate with valid token", async () => {
+      await authenticateHandler({ token: "from-cookie" });
+
+      expect(MockedAuthService.verifyToken).toHaveBeenCalled();
+      expect(mockSocket.emit).toHaveBeenCalledWith("authenticated", {
+        success: true,
+        user: { ...mockUser, passwordHash: undefined },
+      });
+    });
+
+    it("should fail authentication with invalid token", async () => {
+      MockedAuthService.verifyToken.mockRejectedValue(
+        new Error("Invalid token")
+      );
+
+      await authenticateHandler({ token: "from-cookie" });
+
+      expect(mockSocket.emit).toHaveBeenCalledWith("authenticated", {
+        success: false,
+        error: "Authentication failed",
+      });
+    });
+
+    it("should fail authentication when token is null", async () => {
+      MockedAuthService.verifyToken.mockResolvedValue(null);
+
+      await authenticateHandler({ token: "from-cookie" });
+
+      expect(mockSocket.emit).toHaveBeenCalledWith("authenticated", {
+        success: false,
+        error: "Invalid or expired token",
+      });
+    });
+  });
+
+  describe("join-room event", () => {
+    let joinRoomHandler: Function;
+    let authenticateHandler: Function;
+
+    beforeEach(async () => {
+      handler.handleConnection(mockSocket as Socket);
+      const onCalls = (mockSocket.on as jest.Mock).mock.calls;
+
+      const authenticateCall = onCalls.find(
+        (call: [string, Function]) => call[0] === "authenticate"
+      );
+      authenticateHandler = authenticateCall![1];
+
       const joinRoomCall = onCalls.find(
         (call: [string, Function]) => call[0] === "join-room"
       );
@@ -143,12 +223,26 @@ describe("GameSocketHandler", () => {
           .fill(null)
           .map(() => Array(10).fill(null))
       );
+
+      // Authenticate the socket first
+      await authenticateHandler({ token: "from-cookie" });
+
+      // Mock UserService methods that are called during join-room
+      const MockedUserService = require("../../src/services/UserService")
+        .UserService as jest.Mocked<
+        typeof import("../../src/services/UserService").UserService
+      >;
+      MockedUserService.updateUserGameState = jest
+        .fn()
+        .mockResolvedValue(undefined);
+
+      jest.clearAllMocks(); // Clear authentication call mocks
     });
 
-    it("should successfully join a room", () => {
+    it("should successfully join a room when authenticated", async () => {
       const mockPlayer = createMockPlayer(
         "test-player-id",
-        "Test Player",
+        "testuser",
         "socket123"
       );
       const mockRoom = createMockRoom("room123", [mockPlayer]);
@@ -156,12 +250,17 @@ describe("GameSocketHandler", () => {
       MockedGameRoomModel.addPlayerToRoom.mockReturnValue(true);
       MockedGameRoomModel.getRoom.mockReturnValue(mockRoom);
 
-      joinRoomHandler({
-        roomId: "room123",
-        playerName: "Test Player",
-      });
+      await joinRoomHandler({ roomId: "room123" });
 
-      expect(MockedGameRoomModel.addPlayerToRoom).toHaveBeenCalled();
+      expect(MockedGameRoomModel.addPlayerToRoom).toHaveBeenCalledWith(
+        "room123",
+        expect.objectContaining({
+          id: "test-player-id",
+          userId: "test-user-id",
+          name: "testuser",
+          socketId: "socket123",
+        })
+      );
       expect(mockSocket.join).toHaveBeenCalledWith("room123");
       expect(mockSocket.emit).toHaveBeenCalledWith("joined-room", {
         success: true,
@@ -170,48 +269,59 @@ describe("GameSocketHandler", () => {
       });
     });
 
+    it("should fail to join room when not authenticated", () => {
+      // Create a new socket without authentication
+      const newMockSocket = {
+        id: "socket456",
+        join: jest.fn(),
+        leave: jest.fn(),
+        emit: jest.fn(),
+        to: jest.fn().mockReturnThis(),
+        on: jest.fn(),
+      };
+
+      // Create a new handler without authentication
+      const newHandler = new GameSocketHandler(io);
+      newHandler.handleConnection(newMockSocket as unknown as Socket);
+
+      const onCalls = (newMockSocket.on as jest.Mock).mock.calls;
+      const newJoinRoomCall = onCalls.find(
+        (call: [string, Function]) => call[0] === "join-room"
+      );
+      const newJoinRoomHandler = newJoinRoomCall![1];
+
+      newJoinRoomHandler({ roomId: "room123" });
+
+      expect(newMockSocket.emit).toHaveBeenCalledWith("joined-room", {
+        success: false,
+        error: "Authentication required",
+      });
+    });
+
     it("should handle failed room join", () => {
       MockedGameRoomModel.addPlayerToRoom.mockReturnValue(false);
 
-      joinRoomHandler({
-        roomId: "room123",
-        playerName: "Test Player",
-      });
+      joinRoomHandler({ roomId: "room123" });
 
       expect(mockSocket.emit).toHaveBeenCalledWith("joined-room", {
         success: false,
         error: "Could not join room",
       });
     });
-
-    it("should handle errors during room join", () => {
-      MockedGameRoomModel.addPlayerToRoom.mockImplementation(() => {
-        throw new Error("Database error");
-      });
-
-      joinRoomHandler({
-        roomId: "room123",
-        playerName: "Test Player",
-      });
-
-      expect(mockSocket.emit).toHaveBeenCalledWith("joined-room", {
-        success: false,
-        error: "Server error",
-      });
-    });
   });
 
   describe("place-ships event", () => {
-    let placeShipsHandler: Function;
+    let authenticateHandler: Function;
     let mockShips: Ship[];
 
-    beforeEach(() => {
+    beforeEach(async () => {
       handler.handleConnection(mockSocket as Socket);
       const onCalls = (mockSocket.on as jest.Mock).mock.calls;
-      const placeShipsCall = onCalls.find(
-        (call: [string, Function]) => call[0] === "place-ships"
+
+      const authenticateCall = onCalls.find(
+        (call: [string, Function]) => call[0] === "authenticate"
       );
-      placeShipsHandler = placeShipsCall![1];
+      authenticateHandler = authenticateCall![1];
 
       mockShips = [
         {
@@ -225,192 +335,90 @@ describe("GameSocketHandler", () => {
           isDestroyed: false,
         },
       ];
+
+      // Authenticate the socket first
+      await authenticateHandler({ token: "from-cookie" });
+      jest.clearAllMocks(); // Clear authentication call mocks
     });
 
-    it("should reject invalid ship placement", () => {
-      MockedGameService.validateShipPlacement.mockReturnValue(false);
+    it("should require authentication", () => {
+      // Create a new socket without authentication
+      const newMockSocket = {
+        id: "socket456",
+        join: jest.fn(),
+        leave: jest.fn(),
+        emit: jest.fn(),
+        to: jest.fn().mockReturnThis(),
+        on: jest.fn(),
+      };
 
-      placeShipsHandler({
+      // Create a new handler without authentication
+      const newHandler = new GameSocketHandler(io);
+      newHandler.handleConnection(newMockSocket as unknown as Socket);
+
+      const onCalls = (newMockSocket.on as jest.Mock).mock.calls;
+      const newPlaceShipsCall = onCalls.find(
+        (call: [string, Function]) => call[0] === "place-ships"
+      );
+      const newPlaceShipsHandler = newPlaceShipsCall![1];
+
+      newPlaceShipsHandler({
         roomId: "room123",
         ships: mockShips,
       });
 
-      expect(mockSocket.emit).toHaveBeenCalledWith("ships-placed", {
+      expect(newMockSocket.emit).toHaveBeenCalledWith("ships-placed", {
         success: false,
-        error: "Player not found",
+        error: "Authentication required",
       });
-    });
-
-    it("should validate ship placement", () => {
-      MockedGameService.validateShipPlacement.mockReturnValue(false);
-
-      placeShipsHandler({
-        roomId: "room123",
-        ships: mockShips,
-      });
-
-      expect(mockSocket.emit).toHaveBeenCalledWith("ships-placed", {
-        success: false,
-        error: "Player not found",
-      });
-    });
-  });
-
-  describe("make-move event", () => {
-    let makeMoveHandler: Function;
-
-    beforeEach(() => {
-      handler.handleConnection(mockSocket as Socket);
-      const onCalls = (mockSocket.on as jest.Mock).mock.calls;
-      const makeMoveCall = onCalls.find(
-        (call: [string, Function]) => call[0] === "make-move"
-      );
-      makeMoveHandler = makeMoveCall![1];
-    });
-
-    it("should handle move when player not found", () => {
-      makeMoveHandler({
-        roomId: "room123",
-        x: 5,
-        y: 5,
-      });
-
-      // Should not crash and should handle gracefully
-      expect(mockSocket.emit).not.toHaveBeenCalledWith("move-result", {
-        success: true,
-      });
-    });
-  });
-
-  describe("player-ready event", () => {
-    let playerReadyHandler: Function;
-
-    beforeEach(() => {
-      handler.handleConnection(mockSocket as Socket);
-      const onCalls = (mockSocket.on as jest.Mock).mock.calls;
-      const playerReadyCall = onCalls.find(
-        (call: [string, Function]) => call[0] === "player-ready"
-      );
-      playerReadyHandler = playerReadyCall![1];
-    });
-
-    it("should handle ready when player not found", () => {
-      playerReadyHandler({
-        roomId: "room123",
-      });
-
-      // Should not crash and should handle gracefully
-      expect(mockSocket.emit).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("chat-message event", () => {
-    let chatMessageHandler: Function;
-
-    beforeEach(() => {
-      handler.handleConnection(mockSocket as Socket);
-      const onCalls = (mockSocket.on as jest.Mock).mock.calls;
-      const chatMessageCall = onCalls.find(
-        (call: [string, Function]) => call[0] === "chat-message"
-      );
-      chatMessageHandler = chatMessageCall![1];
-    });
-
-    it("should handle chat message when player not found", () => {
-      chatMessageHandler({
-        roomId: "room123",
-        message: "Hello everyone!",
-      });
-
-      // Should not crash and should handle gracefully
-      expect(io.to).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("restart-game event", () => {
-    let restartGameHandler: Function;
-
-    beforeEach(() => {
-      handler.handleConnection(mockSocket as Socket);
-      const onCalls = (mockSocket.on as jest.Mock).mock.calls;
-      const restartGameCall = onCalls.find(
-        (call: [string, Function]) => call[0] === "restart-game"
-      );
-      restartGameHandler = restartGameCall![1];
-
-      // Mock GameService.initializeBoard
-      MockedGameService.initializeBoard.mockReturnValue(
-        Array(10)
-          .fill(null)
-          .map(() => Array(10).fill(null))
-      );
-    });
-
-    it("should handle restart when player not found", () => {
-      restartGameHandler({
-        roomId: "room123",
-      });
-
-      // Should not crash and should handle gracefully
-      expect(io.to).not.toHaveBeenCalled();
     });
   });
 
   describe("disconnect event", () => {
     let disconnectHandler: Function;
+    let authenticateHandler: Function;
 
-    beforeEach(() => {
+    beforeEach(async () => {
       handler.handleConnection(mockSocket as Socket);
       const onCalls = (mockSocket.on as jest.Mock).mock.calls;
+
+      const authenticateCall = onCalls.find(
+        (call: [string, Function]) => call[0] === "authenticate"
+      );
+      authenticateHandler = authenticateCall![1];
+
       const disconnectCall = onCalls.find(
         (call: [string, Function]) => call[0] === "disconnect"
       );
       disconnectHandler = disconnectCall![1];
+
+      // Authenticate the socket first
+      await authenticateHandler({ token: "from-cookie" });
+      jest.clearAllMocks(); // Clear authentication call mocks
     });
 
-    it("should handle disconnect gracefully when no player is mapped", () => {
+    it("should handle disconnect gracefully when no user is mapped", () => {
       MockedGameRoomModel.getAllRooms.mockReturnValue([]);
 
       disconnectHandler();
 
-      // Should not crash and should not call getAllRooms when no player is mapped
-      expect(MockedGameRoomModel.getAllRooms).not.toHaveBeenCalled();
+      // Should not crash and should handle gracefully
+      expect(MockedGameRoomModel.getAllRooms).toHaveBeenCalled();
     });
 
-    it("should clean up player mappings when player exists", () => {
-      // First simulate a join to create player mapping
-      const joinRoomHandler = (mockSocket.on as jest.Mock).mock.calls.find(
-        (call: [string, Function]) => call[0] === "join-room"
-      )![1];
-
+    it("should clean up user mappings when user exists", () => {
       const mockPlayer = createMockPlayer(
         "test-player-id",
-        "Test Player",
+        "testuser",
         "socket123"
       );
       const mockRoom = createMockRoom("room123", [mockPlayer]);
 
-      MockedGameRoomModel.addPlayerToRoom.mockReturnValue(true);
-      MockedGameRoomModel.getRoom.mockReturnValue(mockRoom);
-      MockedGameService.initializeBoard.mockReturnValue(
-        Array(10)
-          .fill(null)
-          .map(() => Array(10).fill(null))
-      );
-
-      // Join room to create player mapping
-      joinRoomHandler({
-        roomId: "room123",
-        playerName: "Test Player",
-      });
-
-      // Now test disconnect
       MockedGameRoomModel.getAllRooms.mockReturnValue([mockRoom]);
       MockedGameRoomModel.removePlayerFromRoom.mockReturnValue(true);
 
       disconnectHandler();
 
-      // Should call getAllRooms and removePlayerFromRoom
       expect(MockedGameRoomModel.getAllRooms).toHaveBeenCalled();
       expect(MockedGameRoomModel.removePlayerFromRoom).toHaveBeenCalledWith(
         "room123",

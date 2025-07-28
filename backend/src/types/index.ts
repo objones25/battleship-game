@@ -1,5 +1,54 @@
+// User and Authentication Types
+export interface User {
+  id: string;
+  username: string;
+  email: string;
+  passwordHash: string;
+  createdAt: Date;
+  lastActive: Date;
+  currentGame?: UserGameState;
+}
+
+export interface UserGameState {
+  roomId: string;
+  playerId: string;
+  ships: Ship[];
+  isReady: boolean;
+  gamePhase: "setup" | "playing" | "finished";
+  opponentId?: string;
+  lastActivity: Date;
+}
+
+export interface AuthToken {
+  userId: string;
+  username: string;
+  email: string;
+  exp: number;
+  iat: number;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface RegisterRequest {
+  username: string;
+  email: string;
+  password: string;
+}
+
+export interface AuthResponse {
+  success: boolean;
+  user?: Omit<User, "passwordHash">;
+  token?: string;
+  error?: string;
+}
+
+// Game Types (Updated for User-based system)
 export interface Player {
   id: string;
+  userId: string;
   name: string;
   socketId: string;
   isReady: boolean;
@@ -37,4 +86,15 @@ export interface GameStats {
   activeRooms: number;
   activePlayers: number;
   uptime: number;
+}
+
+// Socket Event Types
+export interface SocketAuthData {
+  token?: string; // Optional since we extract from cookies
+}
+
+export interface SocketAuthResponse {
+  success: boolean;
+  user?: Omit<User, "passwordHash">;
+  error?: string;
 }

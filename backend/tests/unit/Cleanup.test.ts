@@ -52,9 +52,10 @@ describe("GameRoomModel.cleanupRooms", () => {
       // Create a room and add a player
       const room = GameRoomModel.createRoom();
       const player = {
-        id: Utils.generatePlayerId(),
-        name: "TestPlayer",
-        socketId: "socket123",
+        id: "player1",
+        userId: "test_user_1",
+        name: "Player 1",
+        socketId: "socket1",
         isReady: false,
         board: GameService.initializeBoard(),
         ships: [],
@@ -167,6 +168,7 @@ describe("GameRoomModel.cleanupRooms", () => {
       const roomWithPlayer = GameRoomModel.createRoom();
       const player = {
         id: Utils.generatePlayerId(),
+        userId: "test_user_mixed",
         name: "TestPlayer",
         socketId: "socket123",
         isReady: false,

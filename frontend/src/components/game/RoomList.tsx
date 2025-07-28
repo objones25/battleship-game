@@ -58,7 +58,7 @@ function RoomList(): React.ReactElement {
       const room = await ApiService.createRoom(playerName.trim());
 
       // Join the created room
-      await joinRoom(room.id, playerName.trim());
+      await joinRoom(room.id);
       navigate(`/game/${room.id}`);
     } catch (error) {
       console.error("Failed to create room:", error);
@@ -74,7 +74,7 @@ function RoomList(): React.ReactElement {
 
     try {
       setJoiningRoomId(roomId);
-      await joinRoom(roomId, playerName.trim());
+      await joinRoom(roomId);
       navigate(`/game/${roomId}`);
     } catch (error) {
       console.error("Failed to join room:", error);

@@ -78,9 +78,28 @@ export interface DragState {
   isHorizontal: boolean;
 }
 
+// Authentication types
+export interface User {
+  id: string;
+  username: string;
+  email: string;
+  createdAt: string;
+}
+
+export interface SocketAuthData {
+  token?: string; // Optional since we extract from cookies
+}
+
+export interface SocketAuthResponse {
+  success: boolean;
+  user?: User;
+  error?: string;
+}
+
 // Socket event types - Client to Server
 export interface ClientToServerEvents {
-  "join-room": (data: { roomId: string; playerName: string }) => void;
+  authenticate: (data: SocketAuthData) => void;
+  "join-room": (data: { roomId: string }) => void;
   "leave-room": (data: { roomId: string }) => void;
   "place-ships": (data: { roomId: string; ships: Ship[] }) => void;
   "player-ready": (data: { roomId: string }) => void;
@@ -91,6 +110,13 @@ export interface ClientToServerEvents {
 
 // Socket event types - Server to Client
 export interface ServerToClientEvents {
+  authenticated: (data: SocketAuthResponse) => void;
+  "game-state-restored": (data: {
+    room: GameRoom;
+    player: Player;
+    reconnected: boolean;
+  }) => void;
+  "user-reconnected": (data: { userId: string; username: string }) => void;
   "joined-room": (data: {
     success: boolean;
     playerId?: string;

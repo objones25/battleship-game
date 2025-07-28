@@ -63,6 +63,7 @@ describe("GameRoomModel - Unit Tests", () => {
 
       player1 = {
         id: "player1",
+        userId: "test_user_1",
         name: "Player 1",
         socketId: "socket1",
         ships: [],
@@ -74,6 +75,7 @@ describe("GameRoomModel - Unit Tests", () => {
 
       player2 = {
         id: "player2",
+        userId: "test_user_2",
         name: "Player 2",
         socketId: "socket2",
         ships: [],
@@ -104,6 +106,7 @@ describe("GameRoomModel - Unit Tests", () => {
 
       const player3: Player = {
         id: "player3",
+        userId: "test_user_3",
         name: "Player 3",
         socketId: "socket3",
         ships: [],
@@ -141,6 +144,7 @@ describe("GameRoomModel - Unit Tests", () => {
 
       player1 = {
         id: "player1",
+        userId: "test_user_1",
         name: "Player 1",
         socketId: "socket1",
         ships: [],
@@ -152,6 +156,7 @@ describe("GameRoomModel - Unit Tests", () => {
 
       player2 = {
         id: "player2",
+        userId: "test_user_2",
         name: "Player 2",
         socketId: "socket2",
         ships: [],
@@ -254,6 +259,7 @@ describe("GameRoomModel - Unit Tests", () => {
 
       const player1: Player = {
         id: "p1",
+        userId: "test_user_p1",
         name: "Player 1",
         socketId: "socket1",
         ships: [],
@@ -264,6 +270,7 @@ describe("GameRoomModel - Unit Tests", () => {
       };
       const player2: Player = {
         id: "p2",
+        userId: "test_user_p2",
         name: "Player 2",
         socketId: "socket2",
         ships: [],
@@ -288,6 +295,7 @@ describe("GameRoomModel - Unit Tests", () => {
 
       const player1: Player = {
         id: "p1",
+        userId: "test_user_p1",
         name: "Player 1",
         socketId: "socket1",
         ships: [],
@@ -340,6 +348,7 @@ describe("GameRoomModel - Unit Tests", () => {
       const room = GameRoomModel.createRoom();
       const player: Player = {
         id: "p1",
+        userId: "test_user_p1",
         name: "Player 1",
         socketId: "socket1",
         ships: [],

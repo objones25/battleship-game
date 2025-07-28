@@ -8,7 +8,7 @@ import type {
 } from "../types";
 
 // Socket configuration
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:3000";
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:3001";
 
 export class SocketService {
   private static instance: SocketService;
@@ -43,6 +43,7 @@ export class SocketService {
         reconnection: true,
         reconnectionAttempts: this.maxReconnectAttempts,
         reconnectionDelay: this.reconnectDelay,
+        withCredentials: true, // Include cookies in socket handshake
       });
 
       this.socket.on("connect", () => {
@@ -69,6 +70,38 @@ export class SocketService {
       // Note: reconnect and reconnect_error are internal socket.io events
       // They're not part of our ServerToClientEvents interface
       // We'll handle reconnection through the built-in socket.io mechanisms
+    });
+  }
+
+  /**
+   * Authenticate the socket connection with JWT token
+   */
+  authenticate(): Promise<{ success: boolean; user?: any; error?: string }> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket) {
+        reject(new Error("Socket not connected"));
+        return;
+      }
+
+      // The server will extract the auth token from the HTTP-only cookie
+      // No need to send token data - cookies are automatically included in socket handshake
+      this.socket.emit("authenticate", {});
+
+      // Listen for authentication response
+      this.socket.once("authenticated", (response) => {
+        if (response.success) {
+          console.log("Socket authenticated successfully");
+          resolve(response);
+        } else {
+          console.error("Socket authentication failed:", response.error);
+          resolve(response); // Don't reject, let caller handle the failure
+        }
+      });
+
+      // Set a timeout for authentication
+      setTimeout(() => {
+        resolve({ success: false, error: "Authentication timeout" });
+      }, 5000);
     });
   }
 
@@ -101,9 +134,10 @@ export class SocketService {
   /**
    * Join a game room
    */
-  joinRoom(roomId: string, playerName: string): void {
+  joinRoom(roomId: string): void {
     if (!this.socket) throw new Error("Socket not connected");
-    this.socket.emit("join-room", { roomId, playerName });
+    console.log(`Emitting join-room event for room: ${roomId}`);
+    this.socket.emit("join-room", { roomId });
   }
 
   /**

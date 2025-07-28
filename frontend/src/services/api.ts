@@ -9,11 +9,12 @@ import type {
 } from "../types";
 
 // API configuration
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
+  withCredentials: true, // Include cookies for authentication
   headers: {
     "Content-Type": "application/json",
   },
@@ -45,6 +46,76 @@ api.interceptors.response.use(
 
 // API service class
 export class ApiService {
+  /**
+   * Register a new user
+   */
+  static async register(
+    email: string,
+    username: string,
+    password: string
+  ): Promise<{ success: boolean; user?: any; error?: string }> {
+    try {
+      const response = await api.post("/api/auth/register", {
+        email,
+        username,
+        password,
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error("Registration failed:", error);
+      throw new Error(error.response?.data?.error || "Registration failed");
+    }
+  }
+
+  /**
+   * Login user
+   */
+  static async login(
+    email: string,
+    password: string
+  ): Promise<{ success: boolean; user?: any; error?: string }> {
+    try {
+      const response = await api.post("/api/auth/login", {
+        email,
+        password,
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error("Login failed:", error);
+      throw new Error(error.response?.data?.error || "Login failed");
+    }
+  }
+
+  /**
+   * Logout user
+   */
+  static async logout(): Promise<{ success: boolean }> {
+    try {
+      const response = await api.post("/api/auth/logout");
+      return response.data;
+    } catch (error: any) {
+      console.error("Logout failed:", error);
+      throw new Error(error.response?.data?.error || "Logout failed");
+    }
+  }
+
+  /**
+   * Get current user
+   */
+  static async getCurrentUser(): Promise<{
+    success: boolean;
+    user?: any;
+    error?: string;
+  }> {
+    try {
+      const response = await api.get("/api/auth/me");
+      return response.data;
+    } catch (error: any) {
+      console.error("Get current user failed:", error);
+      throw new Error(error.response?.data?.error || "Failed to get user");
+    }
+  }
+
   /**
    * Get server status and statistics
    */

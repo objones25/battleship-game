@@ -107,6 +107,9 @@ export class RoomController {
       // Create player object
       const player = {
         id: `player_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        userId: `anonymous_${Date.now()}_${Math.random()
+          .toString(36)
+          .substr(2, 9)}`, // Placeholder for anonymous users
         name: playerName.trim(),
         socketId: "", // Will be set when player connects via socket
         isReady: false,

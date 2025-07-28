@@ -74,7 +74,7 @@ interface GameContextType {
   // Actions
   connectSocket: () => Promise<void>;
   disconnectSocket: () => void;
-  joinRoom: (roomId: string, playerName: string) => Promise<void>;
+  joinRoom: (roomId: string) => Promise<void>;
   leaveRoom: () => void;
   placeShips: (ships: Ship[]) => void;
   markReady: () => void;
@@ -121,10 +121,7 @@ export function GameProvider({
   };
 
   // Room management
-  const joinRoom = async (
-    roomId: string,
-    playerName: string
-  ): Promise<void> => {
+  const joinRoom = async (roomId: string): Promise<void> => {
     if (!state.isConnected) {
       throw new Error("Socket not connected");
     }
@@ -132,12 +129,32 @@ export function GameProvider({
     dispatch({ type: "SET_LOADING", payload: true });
 
     try {
-      socketService.joinRoom(roomId, playerName);
+      // First authenticate the socket connection
+      const authResult = await socketService.authenticate();
+      if (!authResult.success) {
+        throw new Error(authResult.error || "Authentication failed");
+      }
+
+      socketService.joinRoom(roomId);
+
+      // Set a timeout to handle cases where joined-room event never arrives
+      setTimeout(() => {
+        if (state.loading && !state.room) {
+          console.error("Room join timeout - joined-room event never received");
+          dispatch({
+            type: "SET_ERROR",
+            payload: "Room join timeout. Please try again.",
+          });
+          dispatch({ type: "SET_LOADING", payload: false });
+        }
+      }, 10000); // 10 second timeout
+
       // The actual room join will be handled by the socket event listener
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Failed to join room";
       dispatch({ type: "SET_ERROR", payload: errorMessage });
+      dispatch({ type: "SET_LOADING", payload: false });
     }
   };
 

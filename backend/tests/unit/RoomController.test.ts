@@ -137,8 +137,9 @@ describe("RoomController - Unit Tests", () => {
     it("should return sanitized room data when room exists", () => {
       const mockPlayer: Player = {
         id: "player1",
-        name: "John",
-        socketId: "socket123",
+        userId: "test_user_1",
+        name: "Test Player",
+        socketId: "socket1",
         isReady: true,
         ships: [],
         board: [],
@@ -167,7 +168,7 @@ describe("RoomController - Unit Tests", () => {
         players: [
           {
             id: "player1",
-            name: "John",
+            name: "Test Player",
             isReady: true,
           },
         ],
